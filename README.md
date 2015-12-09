@@ -1,3 +1,23 @@
 # PXEserver-configuration
-Pxe server configuration steps
+#########	WELCOME to PXE server configuration	#########
+
+Here we are going to setup PXEserver with CentOS 6.6(make sure with this Linux distribution)
+
+Pre-requirements:
+
+1.Client machine allow boot through network(You can verify this on BIOS).
+2.Minimum Hardware:	-1Gb RAM
+			-40Gb HDD
+			-CPU 2 Core
+			-Network Card(NAT Network).
+		
+3.OS: CentOS 6.6 Minimal installation.
+4.IP Address(I choosen):192.168.1.145.
+5.SELinux : Disabled.
+6.IP tables: Disabled.
+( I used Oracle Virtual Box Build Version 4.3.24 )
+
+### The configuration steps are given in PXEserver-configuration file.
+
+*** Feel free to ask ### naveen.mh08@gmail.com ###
 
