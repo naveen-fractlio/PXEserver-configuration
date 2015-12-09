@@ -1,0 +1,534 @@
+STEPS:
+
+1)NETWORK INTERFACE CONFIGURATION:
+
+>You just need to follow the topology of the network in this step and remember to enable ip forwarding. So:
+
+>Eth0 is for outside network(made DHCP for accessing to INTERNET)
+>Eth1 is made for local network(Which is configured with STATIC IP(which will be made DHCP server for client machines)).
+(refer this link for ip configuration: https://extr3metech.wordpress.com/2013/05/23/configuring-network-in-centos-6-3-virtual-box-screenshots/)
+
+>To enable IP Forwarding do:
+
+
+$ echo 1 > /proc/sys/net/ipv4/ip_forward
+
+
+>To test if the ip forwarding is enabled (do as sudoer, plz):
+
+
+$ /sbin/sysctl net.ipv4.ip_forward
+
+
+>if it returns 1, then the IP forwarding is enabled. If it returns 0,to enable Ip forward do:
+
+
+$ /sbin/sysctl -w net.ipv4.ip_forward=1
+
+
+2)DHCP SERVICE INSTALLATION:
+
+
+$ yum install dhcp
+
+
+>Now it needs to configure the /etc/dhcp/dhcpd.conf
+
+So do:
+
+
+vi /etc/dhcp/dhcp.conf and do the changes as made below....
+
+
+
+# Server Configuration file.
+# see /usr/share/doc/dhcp*/dhcpd.conf.sample
+# see 'man 5 dhcpd.conf'
+#
+# Written by Naveenkumar
+
+ddns-update-style interim;
+
+# Added for PXE boot support
+allow booting;
+allow bootp;
+
+option option-128 code 128 = string;
+option option-129 code 129 = text;
+
+next-server 192.168.1.145;	#your IP address
+filename "pxelinux.0";
+ignore client-updates;
+
+# Network address and subnet mask
+subnet 192.168.1.0 netmask 255.255.255.0 {
+option routers 192.168.1.7;		#ur Gateway/router address
+option subnet-mask 255.255.255.0;
+option domain-name "localdomain";
+option domain-name-servers 192.168.1.7;		#your Gateway address
+
+# Range of lease IP address, should be based
+# On the size of the network
+range dynamic-bootp 192.168.1.150 192.168.1.200;	#assign range of ip addresses u wanr
+
+# Broadcast address
+option broadcast-address 192.168.1.255;		#should be made like this only
+
+# Default lease time
+default-lease-time 216000;
+# Maximum lease time
+max-lease-time 432000;
+}
+
+
+
+
+>Once you configured all this, do:
+
+To make the changes and verify if your configurations have a correct syntax.
+
+
+$ service dhcpd restart 
+
+
+Define the service to start automatically during the system boot:
+
+
+$ chkconfig dhcpd on
+
+
+
+
+3)TFTP CONFIGURATION:
+
+Get the tftp server:
+
+
+$ yum install tftp-server
+
+
+>Tftp in CentOS runs under the xinetd, that is a open-source super-server daemon which runs on many Unix-like systems. It manages internet based connectivity. By default, the tftp comes disabled (not impressive, since it is by its nature so insecure).
+
+To enable it, one has to modify /etc/xinetd.d/tftp
+
+
+
+
+>There’s a field called disable. Set it to ‘no’. Aside from that, in order to make it easier for you to debug (or just check logs) of what happened once the clients communicated to it, one should set it to really verbose by adding the –vvv option in the arguments section.
+
+Here is an example of the content of this file:
+
+
+
+
+# default: off
+# description: The tftp server serves files using the trivial file transfer
+# protocol. The tftp protocol is often used to boot diskless
+# workstations, download configuration files to network-aware printers,
+# and to start the installation process for some operating systems.
+
+service tftp
+{
+socket_type = dgram
+protocol = udp
+wait = yes
+user = root
+server = /usr/sbin/in.tftpd
+server_args = -vvv -s /var/lib/tftpboot
+disable = no
+per_source = 11
+cps = 100 2
+flags = IPv4
+}
+
+
+
+
+>The /var/lib/tftpboot defines where are going to be the bootstrap files that you will need to perform network boot. You can change this directory, if you wish. Most of the tftp configuration files probably follow this template (which I would recommend you to keep it) and have the exactly same content.
+
+>The –s is a secure option used to limit the access to your files when other users connect to the tftp. This will make the tftp run under chroot.
+
+
+
+
+4)INSTALL THE APACHE WEBSERVER(HTTP SERVICE):
+
+Do:
+
+
+$ yum install httpd
+
+
+>Then edit the file by vi /etc/httpd/conf/httpd.conf in order to set the ServerName to your server IP Address and Port 80. In my case, the content of that line is set to:
+
+
+ServerName 192.168.1.145:80
+
+
+>Start the Apache server and enable it to boot start by running the following commands:
+
+
+$ service httpd start
+
+$ chkconfig httpd on
+
+
+>To verify is the server is running smooth perform:
+
+
+$ service httpd status
+
+
+
+5)FIREWALL:
+
+Note: this is a little bit tricky, because you may have set another rules to your firewall. Basically what you have do to is Open UDP port 69 in the firewall and TCP Port 80. In order to do this, you can just add the following lines to the file /etc/sysconfig/iptables :
+
+
+-A INPUT -p udp -m state --state NEW -m udp --dport 69 -j ACCEPT
+-A INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT
+
+
+>In the default file, I would suggest to add these lines right after the SSH opening port line, that is:
+
+
+-A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
+
+
+Note: Keep in mind that this may cause you some troubles. If the firewall is incorrectly configured, your client machine is going to find the DHCP server but will have problems to find the TFTP server.
+
+>Once you performed all the configuration, do service restart and check if it is running smoothly:
+
+
+$ service iptables restart
+$ service iptables status
+
+
+>If you have spent lots of time trying to configure it, but you still have problems for find server machine, you can try the following. (DANGER!)
+
+
+$ service iptables stop
+
+
+
+
+6)SYSLINUX:
+
+
+>Now that all the server daemons are correctly installed, it’s time to install Syslinux.
+
+
+$ yum install syslinux
+
+
+>Copy Syslinux files to /tftpboot directory:
+
+
+$ cp /usr/share/syslinux/pxelinux.0 /var/lib/tftpboot/
+$ cp /usr/share/syslinux/menu.c32 /var/lib/tftpboot/
+$ cp /usr/share/syslinux/memdisk /var/lib/tftpboot/
+$ cp /usr/share/syslinux/mboot.c32 /var/lib/tftpboot/
+$ cp /usr/share/syslinux/chain.c32 /var/lib/tftpboot/
+
+
+>Make a new directory for the PXE basic menu files (These are the options that will be (or not) displayed to the user once the machines boots)
+
+
+$ mkdir /var/lib/tftpboot/pxelinux.cfg
+
+
+>Inside the pxelinux.cfg directory (yes! it’s a directory. Not a file extension, although it looks like one), create a file named default and insert the following content into it:
+
+$ vi /var/lib/tftpboot/pxelinux.cfg/default
+
+default menu.c32
+prompt 0
+
+
+MENU TITLE #########  PXE Menu  #########
+
+LABEL MinimalInstallation
+    MENU LABEL CentOS-6.6-x86_64-minimal (Developer install)
+    KERNEL images/centos-6.6-64/vmlinuz append vga=normal initrd=images/centos-6.6-64/initrd.img ramdisk_size=32768 ks=http://192.168.1.145/mirrors/centos/ks.cfg ksdevice=eth0
+
+LABEL local
+    MENU LABEL Boot local hard drive
+    LOCALBOOT 0
+
+
+
+Needless to say, one must chose the http server address for the lines that start with ks.
+
+
+
+7)IMAGE SELECTION:
+
+>Once you have finished to configure the default file, one has to place the linux kernel and the RAM image into the /tftpboot directory.
+
+>I strongly recommend to create a new directory for each Linux distribution that you may have created an option in the default. It is important that the path follows the KERNEL and APPEND directives.
+
+Thus run the following command in the server machine to create the directory:
+
+
+$ mkdir -p /var/lib/tftpboot/images/centos-6.6-64
+
+
+>Here comes a catchy part: For each Linux distribution that you may want to install, you need to get the vmlinuz (that is the kernel) and initrd.img (initial RAM image) of it. In my personal case, I have downloaded the following version of centOS: CentOS-6.6-x86_64-minimal.iso(you can get it at www.centos.org)
+
+>Why am i not the minimal iso? Well, because I really wanted to perform a full developer workspace installation. This installation requires several packages that are not available in the minimal installation.
+
+
+So to mount it, perform:
+
+
+$ mount /linuximages/CentOS-6.6-x86_64-minimal.iso /mnt -o loop
+
+
+>Don’t forget that you need to have sudoers privileges to mount! (yeah, its a sbin binary)
+Now go to the tftp directory, by doing:
+
+
+$cd /var/lib/tftpboot/images/centos-6.5-64cp /mnt/isolinux/vmlinuz
+$cp /mnt/isolinux/initrd.img
+
+
+To check out if you performed the correct file disposition for the tftp, do the following command:
+
+
+$tree /var/lib/tftpboot
+
+
+/var/lib/tftpboot/
+|-- chain.c32
+|-- images
+|   `-- centos-6.6-64
+|       |-- CentOS-6.6-x86_64-minimal.iso
+|       |-- initrd.img
+|       `-- vmlinuz
+|-- mboot.c32
+|-- memdisk
+|-- menu.c32
+|-- pxelinux.0
+|-- pxelinux.cfg
+|   `-- default
+`-- pxelinuz.cfg
+
+3 directories, 10 files
+
+
+>if you can’t perform treecommand, nothing that the following command won’t solve:
+
+
+$ yum install tree
+
+
+8)COPYING THE IMAGE TO THE HTTP SERVER:
+
+
+>We’re almost there! Time for the Http server image configuration. You need to put all the content of the mounted image in the directory that you specified in the default file and in the kickstart file(ks.cfg)
+which in our case is:
+
+/mirrors/centos/6.6/
+
+>Remember that the absolute path for the webserver is /var/www/html/, thus you have to perform the following commands to copy the image to there:
+
+
+$mkdir -p /var/www/html/mirrors/centos/6.6/
+$cd /var/www/html/mirrors/centos/6.6/
+
+
+>And copy all the files from the mounted image into that directory:
+
+
+$cp -r /mnt/* .
+
+
+>Don’t forget that you can name this directories as it pleases you. But it needs to be configured in the default PXE file and in the kickstart file.
+
+Running a sample tree command for the file structure, one can see:
+
+
+
+
+├── CentOS_BuildTag
+├── EFI
+│   ├── BOOT
+│   │   ├── BOOTX64.conf
+│   │   ├── BOOTX64.efi
+│   │   ├── splash.xpm.gz
+│   │   └── TRANS.TBL
+│   └── TRANS.TBL
+├── EULA
+├── GPL
+├── images
+│   ├── efiboot.img
+│   ├── efidisk.img
+│   ├── install.img
+│   ├── pxeboot
+│   │   ├── initrd.img
+│   │   ├── TRANS.TBL
+│   │   └── vmlinuz
+│   └── TRANS.TBL
+├── isolinux
+│   ├── boot.cat
+│   ├── boot.msg
+.
+.
+.
+
+
+
+
+9)KICKSTART FILE(ks.cfg):
+
+
+>Now it’s time for the kickstart file. This file is of paramount important, since it defines the configurations of the machine without you having to interact with it.
+
+
+>You can use anaconda or another kickstart generator in order to create this file. In my personal case, I wrote the script myself.
+
+
+
+#!/bin/bash
+# Kickstart for CentOS 6.6 for PXE server
+# By Marco Lotz (marcolotz.com)(Naveenkumar)
+# Install system on the machine.
+install
+
+# Use http as the package repository
+# It is where are the image files
+
+url --url="http://192.168.1.145/mirrors/centos/6.6/iso"
+repo --name=extrasRepo --baseurl=http://192.168.1.145/fractaldevpackages/
+
+# Use the text installation interface.
+text
+# Use UTF-8 encoded USA English as the Language
+lang en_US.UTF-8
+
+# Configure time zone.
+timezone --utc Asia/Kolkata
+
+# Use Br-abnt2 keyboard.
+keyboard us
+
+# Set bootloader location.
+bootloader --location=mbr --driveorder=sda
+
+# Set root password
+# Use crypt to create a encripted one
+rootpw --plaintext root123      #(TellThePasswordYouWant)
+
+# Enable shadowing and defines algorithm
+authconfig --enableshadow --passalgo=sha512
+
+# Disables SELinux for default
+# This is a little tricky with cloudera manager
+selinux --enforcing
+
+#####################################################
+# Configure Network device
+#####################################################
+
+# Use DHCP and disable IPv6
+# set hostname to hduser
+network --onboot yes --device eth0 --bootproto dhcp --noipv6
+
+
+# Disable firewall
+
+firewall --disabled
+
+#####################################################
+# Partition the hard disk
+#####################################################
+
+# Clear the master boot record on the hard drive.
+zerombr
+
+# Clear existing partitions
+clearpart --all --drives=sda
+
+# Method 1 -automatic partitioning
+# autopart
+
+# Methoid 2 -fixed physical partitions
+part swap --size 2048
+part /home --fstype=ext4 --size 4196
+part /home --fstype=ext2 --size 128
+part /boot --fstype=ext4 --size 512     --asprimary
+part /     --fstype=ext4 --size 1  --grow
+
+%packages --nobase --excludedocs
+@core
+wget
+salt-master
+salt-minion
+nfs-utils
+
+%end
+%post
+#####################################################
+# Startup services
+#####################################################
+
+#service sshd start
+
+chkconfig sshd on
+
+cd /tmp/
+/usr/bin/wget http://192.168.1.145/fio
+cp /tmp/fio /usr/bin/
+chmod 775 /usr/bin/fio
+sed -i -e 's/#master: salt/master: 192.168.1.201/g' /etc/salt/minion
+service salt-minion stop
+yes | rm /etc/salt/minion_id
+touch /etc/salt/minion_id
+chkconfig salt-master off
+
+# Extracting the last two mac fileds for hostname
+STRING=$(ifconfig | grep eth0 | head -1 | awk '{print $5}' | awk -F ':' '{print tolower($5 $6)}')
+
+# Setting the hostname to "fractalio-xxx"
+hostname="fractalio-testing-$STRING"
+echo "Hostname will be : " $hostname ; echo
+###########editing the /etc/salt/minion file. ######
+#/etc/init.d/salt-minion stop
+#sed '' /etc/salt/minion > /etc/salt/backup_minion
+#sed '/#master:/a master: 192.168.1.145' /etc/salt/minion > /etc/salt/new1
+#rm /etc/salt/minion
+#rm -f /var/run/salt-minnion.pid
+###########end of editing the /etc/salt/minion file. ######
+
+###### changes to /etc/salt/master ######
+#cp /etc/salt/master /etc/salt/original_master
+#sed -i '/#file_roots:/a file_roots:\n\ \base:\n\ \- \/srv\/salt' /etc/salt/master
+#######end changes to /etc/salt/master ######
+
+# Disable first boot configuration.
+firstboot --disable
+# Reboot after installation
+reboot
+
+
+
+Ok, I guess the script above is quite self explanatory.......
+
+
+>For more information about the attributes in this file, please refer to:
+https://www.centos.org/docs/5/html/Installation_Guide-en-US/s1-kickstart2-options.html
+
+>Another important thing is that you need to configure partition hard disk to reflect your hardware configuration (really!?). In my scenario I used method 2 u can refer in my ks file.
+
+So NOW!!!!!!
+
+You need to restart the following services:
+(before you can check the status of each by restart>>status)
+# service httpd restart
+# service dhcpd restart
+# service xinetd restart
+
+
+Now the PXEserver Configuration Done.
+
+Run your Client machine in Network Boot.
