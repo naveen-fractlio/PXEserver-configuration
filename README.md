@@ -17,7 +17,7 @@ Pre-requirements:
 6.IP tables: Disabled.
 ( I used Oracle Virtual Box Build Version 4.3.24 )
 
-### The configuration steps are given in PXEserver-configuration file.
+### The configuration steps are given in PXEserver-configuration-steps file.
 
 *** Feel free to ask ### naveen.mh08@gmail.com ###
 
