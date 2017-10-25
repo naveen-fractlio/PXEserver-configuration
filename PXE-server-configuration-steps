@@ -1,5 +1,5 @@
 STEPS:
-
+(using cntos)
 1)NETWORK INTERFACE CONFIGURATION:
 
 >You just need to follow the topology of the network in this step and remember to enable ip forwarding. So:
